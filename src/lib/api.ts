@@ -73,7 +73,8 @@ export interface Application {
   person: {
     id: string;
     full_name: string;
-    home_lc: Office;  // EP's own LC (Home LC)
+    home_lc: Office;   // EP's own LC (Home LC)
+    home_mc?: Office;  // EP's own MC — more reliable country source than home_lc.country
   };
 }
 
@@ -117,6 +118,7 @@ const APPLICATIONS_QUERY = `
           id
           full_name
           home_lc { id name country tag }
+          home_mc { id name country tag }
         }
         host_lc { id name country tag }
         home_mc  { id name country tag }
@@ -259,8 +261,14 @@ export function computeStats(applications: Application[]): ApprovalStats {
       "Other";
     byProgramme[prog] = (byProgramme[prog] ?? 0) + 1;
 
-    // By home country (EP's country)
-    const homeCountry = app.person?.home_lc?.country ?? app.person?.home_lc?.name ?? "Unknown";
+    // By home country (EP's country) — prefer home_mc.country (MC-level, always populated)
+    // over home_lc.country (LC-level, often null) to avoid Turkey 84-vs-1018 style splits
+    const homeCountry =
+      app.person?.home_mc?.country ??
+      app.person?.home_lc?.country ??
+      app.person?.home_mc?.name ??
+      app.person?.home_lc?.name ??
+      "Unknown";
     if (homeCountry) byHomeCountry[homeCountry] = (byHomeCountry[homeCountry] ?? 0) + 1;
 
     // By host country (where EP is going)
@@ -283,7 +291,11 @@ export function computeStats(applications: Application[]): ApprovalStats {
     const dateStr = (app.date_approved ?? app.created_at ?? "").slice(0, 10);
     const bucket = dateStr >= midDate ? "recent" : "older";
 
-    const homeEntity = app.person?.home_lc?.country ?? "Unknown";
+    const homeEntity =
+      app.person?.home_mc?.country ??
+      app.person?.home_lc?.country ??
+      app.person?.home_mc?.name ??
+      "Unknown";
     const hostEntity = app.home_mc?.country ?? app.home_mc?.name ?? "Unknown";
     const homeLCKey = app.person?.home_lc?.name ?? "Unknown";
     const hostLCKey = app.host_lc?.name ?? "Unknown";
@@ -341,10 +353,14 @@ export async function fetchStatsApplications(
       }
     );
     const { data, paging } = first.allOpportunityApplication;
-    if (paging.total_pages <= 1) return data ?? [];
+    const page1 = data ?? [];
+    if (paging.total_items <= page1.length) return page1;
 
-    // Fetch remaining pages in parallel (cap at 19 more = 20 pages / 10 000 records max)
-    const remaining = Math.min(paging.total_pages - 1, 19);
+    // Derive real per-page from actual records returned (API may silently cap per_page).
+    // Then compute true total pages from total_items so we never under-fetch.
+    const realPerPage = page1.length || PER_PAGE;
+    const realTotalPages = Math.ceil(paging.total_items / realPerPage);
+    const remaining = Math.min(realTotalPages - 1, 49); // cap at 50 pages = 25 000 records max
     const pages = await Promise.all(
       Array.from({ length: remaining }, (_, i) =>
         gqlFetch<{ allOpportunityApplication: ApplicationsResult }>(
@@ -358,7 +374,7 @@ export async function fetchStatsApplications(
           .catch((): Application[] => [])
       )
     );
-    return [...(data ?? []), ...pages.flat()];
+    return [...page1, ...pages.flat()];
   } catch {
     return [];
   }
