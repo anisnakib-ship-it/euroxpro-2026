@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchApplications, fetchProgrammeTotals, computeStats, Application, ApprovalStats, ProgrammeTotals } from "@/lib/api";
+import { fetchApplications, fetchProgrammeTotals, fetchStatsApplications, computeStats, Application, ApprovalStats, ProgrammeTotals } from "@/lib/api";
 
 export function useApprovals(filters: Record<string, unknown> = {}) {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -25,15 +25,17 @@ export function useApprovals(filters: Record<string, unknown> = {}) {
       }
       setError(null);
       try {
-        // Fetch page data + real programme totals in parallel
-        const [result, totals] = await Promise.all([
+        // Fetch page data, programme totals, and full stats dataset in parallel.
+        // Table uses paginated result.data (50/page); charts use all records via statsApps.
+        const [result, totals, statsApps] = await Promise.all([
           fetchApplications(p, filters),
           fetchProgrammeTotals(filters),
+          fetchStatsApplications(filters),
         ]);
         setApplications(result.data);
         setTotal(result.total);
         setTotalPages(result.pages);
-        setStats(computeStats(result.data));
+        setStats(computeStats(statsApps));
         setProgrammeTotals(totals);
         setLastUpdated(new Date());
         hasDataRef.current = true;

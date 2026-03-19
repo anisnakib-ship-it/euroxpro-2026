@@ -226,9 +226,18 @@ export function computeStats(applications: Application[]): ApprovalStats {
     }
   }
 
-  // Compute midDate from byDayMap
+  // Compute midDate as the true temporal midpoint between first and last approval date.
+  // Using the calendar midpoint (not median array index) ensures "older" = first half of
+  // the time range and "recent" = second half — regardless of where activity is clustered.
   const allDates = Object.keys(byDayMap).sort();
-  const midDate = allDates.length > 1 ? allDates[Math.floor(allDates.length / 2)] : "";
+  const midDate =
+    allDates.length > 1
+      ? new Date(
+          (new Date(allDates[0]).getTime() + new Date(allDates[allDates.length - 1]).getTime()) / 2
+        )
+          .toISOString()
+          .slice(0, 10)
+      : "";
 
   // Loop 2: build everything else including all growth fields
   const byProgramme: Record<string, number> = {};
@@ -322,15 +331,34 @@ export function computeStats(applications: Application[]): ApprovalStats {
 export async function fetchStatsApplications(
   extraFilters: Record<string, unknown> = {}
 ): Promise<Application[]> {
+  const PER_PAGE = 500;
   try {
-    const result = await gqlFetch<{ allOpportunityApplication: ApplicationsResult }>(
+    const first = await gqlFetch<{ allOpportunityApplication: ApplicationsResult }>(
       APPLICATIONS_QUERY,
       {
-        pagination: { page: 1, per_page: 200 },
+        pagination: { page: 1, per_page: PER_PAGE },
         filters: { status: "approved", ...extraFilters },
       }
     );
-    return result.allOpportunityApplication.data ?? [];
+    const { data, paging } = first.allOpportunityApplication;
+    if (paging.total_pages <= 1) return data ?? [];
+
+    // Fetch remaining pages in parallel (cap at 19 more = 20 pages / 10 000 records max)
+    const remaining = Math.min(paging.total_pages - 1, 19);
+    const pages = await Promise.all(
+      Array.from({ length: remaining }, (_, i) =>
+        gqlFetch<{ allOpportunityApplication: ApplicationsResult }>(
+          APPLICATIONS_QUERY,
+          {
+            pagination: { page: i + 2, per_page: PER_PAGE },
+            filters: { status: "approved", ...extraFilters },
+          }
+        )
+          .then(r => r.allOpportunityApplication.data ?? [])
+          .catch((): Application[] => [])
+      )
+    );
+    return [...(data ?? []), ...pages.flat()];
   } catch {
     return [];
   }
