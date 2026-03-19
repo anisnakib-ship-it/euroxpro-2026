@@ -110,7 +110,8 @@ function generateMockData(): Application[] {
       person: {
         id: String(4000 + i),
         full_name: `Member ${i + 1}`,
-        home_lc: { id: String(5000 + i), name: `LC ${homeCountry}`, country: homeCountry, tag: "LC" },
+        home_lc: { id: String(5000 + i), name: `LC ${homeCountry}`, country: null, tag: "LC" },
+        home_mc: { id: String(5100 + i), name: homeCountry, country: homeCountry, tag: "MC" },
       },
     };
   });

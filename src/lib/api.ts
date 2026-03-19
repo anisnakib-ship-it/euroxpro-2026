@@ -271,9 +271,18 @@ export function computeStats(applications: Application[]): ApprovalStats {
       "Unknown";
     if (homeCountry) byHomeCountry[homeCountry] = (byHomeCountry[homeCountry] ?? 0) + 1;
 
-    // By host country (where EP is going)
-    const hostCountry = app.host_lc?.country ?? app.home_mc?.country ?? app.home_mc?.name ?? "Unknown";
-    if (hostCountry) byHostCountry[hostCountry] = (byHostCountry[hostCountry] ?? 0) + 1;
+    // By host country — MC-level first (host_lc.country is often null, same as home_lc.country).
+    // app.home_mc = Host MC (abroad for oGX, European for iCX).
+    // opportunity.home_mc is identical but kept as extra fallback.
+    const hostCountry =
+      app.home_mc?.country ??
+      app.opportunity?.home_mc?.country ??
+      app.host_lc?.country ??
+      app.home_mc?.name ??
+      app.opportunity?.home_mc?.name ??
+      app.host_lc?.name ??
+      "Unknown";
+    if (hostCountry !== "Unknown") byHostCountry[hostCountry] = (byHostCountry[hostCountry] ?? 0) + 1;
 
     // By home LC name (oGX: EP's home LC)
     const homeLCName = app.person?.home_lc?.name ?? "Unknown";
@@ -296,7 +305,12 @@ export function computeStats(applications: Application[]): ApprovalStats {
       app.person?.home_lc?.country ??
       app.person?.home_mc?.name ??
       "Unknown";
-    const hostEntity = app.home_mc?.country ?? app.home_mc?.name ?? "Unknown";
+    const hostEntity =
+      app.home_mc?.country ??
+      app.opportunity?.home_mc?.country ??
+      app.home_mc?.name ??
+      app.opportunity?.home_mc?.name ??
+      "Unknown";
     const homeLCKey = app.person?.home_lc?.name ?? "Unknown";
     const hostLCKey = app.host_lc?.name ?? "Unknown";
 
