@@ -155,7 +155,6 @@ export async function fetchApplications(
   }>(APPLICATIONS_QUERY, {
     pagination: { page, per_page: 50 },
     filters: {
-      status: "approved",
       ...extraFilters,   // region filter (person_home_region or opportunity_home_region) injected by caller
     },
   });
@@ -183,7 +182,6 @@ export async function fetchProgrammeTotals(
   extraFilters: Record<string, unknown> = {}
 ): Promise<ProgrammeTotals> {
   const base = {
-    status: "approved",
     ...extraFilters,   // region filter injected by caller
   };
 
@@ -245,12 +243,11 @@ export function computeStats(applications: Application[]): ApprovalStats {
   const byProgramme: Record<string, number> = {};
   const byHomeCountry: Record<string, number> = {};
   const byHostCountry: Record<string, number> = {};
-  const byHomeLC: Record<string, number> = {};
-  const byHostLC: Record<string, number> = {};
   const growthByHomeEntity: Record<string, { recent: number; older: number }> = {};
   const growthByHostEntity: Record<string, { recent: number; older: number }> = {};
-  const growthByHomeLC: Record<string, { recent: number; older: number }> = {};
-  const growthByHostLC: Record<string, { recent: number; older: number }> = {};
+  // LC aggregation: keyed by id to merge name variants of the same entity across records
+  const homeLCById: Record<string, { name: string; count: number; recent: number; older: number }> = {};
+  const hostLCById: Record<string, { name: string; count: number; recent: number; older: number }> = {};
 
   for (const app of applications) {
     // Use short_name_display (GV / GTa / GTe) as key
@@ -284,22 +281,31 @@ export function computeStats(applications: Application[]): ApprovalStats {
       "Unknown";
     if (hostCountry !== "Unknown") byHostCountry[hostCountry] = (byHostCountry[hostCountry] ?? 0) + 1;
 
-    // By home LC name (oGX: EP's home LC)
-    const homeLCName = app.person?.home_lc?.name ?? "Unknown";
-    if (homeLCName !== "Unknown") {
-      byHomeLC[homeLCName] = (byHomeLC[homeLCName] ?? 0) + 1;
-    }
-
-    // By host LC name (iCX: European LC hosting the EP)
-    const hostLCName = app.host_lc?.name ?? "Unknown";
-    if (hostLCName !== "Unknown") {
-      byHostLC[hostLCName] = (byHostLC[hostLCName] ?? 0) + 1;
-    }
-
-    // Growth fields
+    // Growth bucket — null when midDate is empty (dataset has 0–1 unique dates),
+    // which means growth comparisons are not meaningful for this filter range.
     const dateStr = (app.date_approved ?? app.created_at ?? "").slice(0, 10);
-    const bucket = dateStr >= midDate ? "recent" : "older";
+    const bucket: "recent" | "older" | null =
+      midDate && dateStr ? (dateStr >= midDate ? "recent" : "older") : null;
 
+    // By home LC — keyed by id to merge name variants of the same entity
+    const homeLCId = app.person?.home_lc?.id;
+    const homeLCName = app.person?.home_lc?.name ?? "Unknown";
+    if (homeLCId && homeLCName !== "Unknown") {
+      if (!homeLCById[homeLCId]) homeLCById[homeLCId] = { name: homeLCName, count: 0, recent: 0, older: 0 };
+      homeLCById[homeLCId].count += 1;
+      if (bucket) homeLCById[homeLCId][bucket] += 1;
+    }
+
+    // By host LC — keyed by id
+    const hostLCId = app.host_lc?.id;
+    const hostLCName = app.host_lc?.name ?? "Unknown";
+    if (hostLCId && hostLCName !== "Unknown") {
+      if (!hostLCById[hostLCId]) hostLCById[hostLCId] = { name: hostLCName, count: 0, recent: 0, older: 0 };
+      hostLCById[hostLCId].count += 1;
+      if (bucket) hostLCById[hostLCId][bucket] += 1;
+    }
+
+    // Growth fields — entity (MC/country) level
     const homeEntity =
       app.person?.home_mc?.country ??
       app.person?.home_lc?.country ??
@@ -311,29 +317,31 @@ export function computeStats(applications: Application[]): ApprovalStats {
       app.home_mc?.name ??
       app.opportunity?.home_mc?.name ??
       "Unknown";
-    const homeLCKey = app.person?.home_lc?.name ?? "Unknown";
-    const hostLCKey = app.host_lc?.name ?? "Unknown";
 
     if (homeEntity !== "Unknown") {
       if (!growthByHomeEntity[homeEntity]) growthByHomeEntity[homeEntity] = { recent: 0, older: 0 };
-      growthByHomeEntity[homeEntity][bucket] += 1;
+      if (bucket) growthByHomeEntity[homeEntity][bucket] += 1;
     }
 
     if (hostEntity !== "Unknown") {
       if (!growthByHostEntity[hostEntity]) growthByHostEntity[hostEntity] = { recent: 0, older: 0 };
-      growthByHostEntity[hostEntity][bucket] += 1;
-    }
-
-    if (homeLCKey !== "Unknown") {
-      if (!growthByHomeLC[homeLCKey]) growthByHomeLC[homeLCKey] = { recent: 0, older: 0 };
-      growthByHomeLC[homeLCKey][bucket] += 1;
-    }
-
-    if (hostLCKey !== "Unknown") {
-      if (!growthByHostLC[hostLCKey]) growthByHostLC[hostLCKey] = { recent: 0, older: 0 };
-      growthByHostLC[hostLCKey][bucket] += 1;
+      if (bucket) growthByHostEntity[hostEntity][bucket] += 1;
     }
   }
+
+  // Convert id-keyed LC maps to name-keyed output (deduplicates name variants of the same entity)
+  const byHomeLC = Object.fromEntries(
+    Object.values(homeLCById).map(({ name, count }) => [name, count])
+  );
+  const byHostLC = Object.fromEntries(
+    Object.values(hostLCById).map(({ name, count }) => [name, count])
+  );
+  const growthByHomeLC = Object.fromEntries(
+    Object.values(homeLCById).map(({ name, recent, older }) => [name, { recent, older }])
+  );
+  const growthByHostLC = Object.fromEntries(
+    Object.values(hostLCById).map(({ name, recent, older }) => [name, { recent, older }])
+  );
 
   const byDay = Object.entries(byDayMap)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -363,7 +371,7 @@ export async function fetchStatsApplications(
       APPLICATIONS_QUERY,
       {
         pagination: { page: 1, per_page: PER_PAGE },
-        filters: { status: "approved", ...extraFilters },
+        filters: { ...extraFilters },
       }
     );
     const { data, paging } = first.allOpportunityApplication;
@@ -381,7 +389,7 @@ export async function fetchStatsApplications(
           APPLICATIONS_QUERY,
           {
             pagination: { page: i + 2, per_page: PER_PAGE },
-            filters: { status: "approved", ...extraFilters },
+            filters: { ...extraFilters },
           }
         )
           .then(r => r.allOpportunityApplication.data ?? [])

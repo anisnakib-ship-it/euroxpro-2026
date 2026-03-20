@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchApplications, fetchProgrammeTotals, fetchStatsApplications, computeStats, Application, ApprovalStats, ProgrammeTotals } from "@/lib/api";
+import { fetchApplications, fetchStatsApplications, computeStats, Application, ApprovalStats, ProgrammeTotals } from "@/lib/api";
 
 export function useApprovals(filters: Record<string, unknown> = {}) {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -25,28 +25,38 @@ export function useApprovals(filters: Record<string, unknown> = {}) {
       }
       setError(null);
       try {
-        // Fetch page data, programme totals, and full stats dataset in parallel.
+        // Fetch page data and full stats dataset in parallel.
         // Table uses paginated result.data (50/page); charts use all records via statsApps.
-        const [result, totals, statsApps] = await Promise.all([
+        // Programme totals are derived from statsApps to guarantee consistency with the chart.
+        const [result, statsApps] = await Promise.all([
           fetchApplications(p, filters),
-          fetchProgrammeTotals(filters),
           fetchStatsApplications(filters),
         ]);
+        const computedStats = computeStats(statsApps);
         setApplications(result.data);
         setTotal(result.total);
         setTotalPages(result.pages);
-        setStats(computeStats(statsApps));
-        setProgrammeTotals(totals);
+        setStats(computedStats);
+        setProgrammeTotals({
+          GV:  computedStats.byProgramme["GV"]  ?? 0,
+          GTa: computedStats.byProgramme["GTa"] ?? 0,
+          GTe: computedStats.byProgramme["GTe"] ?? 0,
+        });
         setLastUpdated(new Date());
         hasDataRef.current = true;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch data");
         const mock = generateMockData();
+        const mockStats = computeStats(mock);
         setApplications(mock);
-        setStats(computeStats(mock));
+        setStats(mockStats);
         setTotal(mock.length);
         setTotalPages(1);
-        setProgrammeTotals({ GV: 0, GTa: 0, GTe: 0 });
+        setProgrammeTotals({
+          GV:  mockStats.byProgramme["GV"]  ?? 0,
+          GTa: mockStats.byProgramme["GTa"] ?? 0,
+          GTe: mockStats.byProgramme["GTe"] ?? 0,
+        });
         hasDataRef.current = true;
       } finally {
         setLoading(false);

@@ -178,6 +178,8 @@ export default function Dashboard({ onHackathon }: { onHackathon?: () => void } 
               iGTa={rankings.iGTa}
               iGTe={rankings.iGTe}
               loading={rankings.loading}
+              mode={filters.mode}
+              programme={filters.programme}
             />
           </RevealSection>
 

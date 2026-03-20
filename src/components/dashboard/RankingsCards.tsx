@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Building2, MapPin, TrendingUp, TrendingDown, Star } from "lucide-react";
 import { ProgrammeStats } from "@/hooks/useRankingsData";
+import { ExchangeMode } from "./Filters";
 
 interface Props extends ProgrammeStats {
   loading: boolean;
+  mode: ExchangeMode;
+  programme: string;  // "all" | "GV" | "GTa" | "GTe"
+}
+
+function getDefaultTab(mode: ExchangeMode, programme: string): TabKey {
+  const prefix = mode === "oGX" ? "o" : "i";
+  if (programme === "GTa") return `${prefix}GTa` as TabKey;
+  if (programme === "GTe") return `${prefix}GTe` as TabKey;
+  return `${prefix}GV` as TabKey;
 }
 
 type TabKey = "oGV" | "oGTa" | "oGTe" | "iGV" | "iGTa" | "iGTe" | "combined";
@@ -457,15 +467,21 @@ function RankingCard({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export default function RankingsCards(props: Props) {
-  const { loading, oGV, oGTa, oGTe, iGV, iGTa, iGTe } = props;
+  const { loading, oGV, oGTa, oGTe, iGV, iGTa, iGTe, mode, programme } = props;
   const data: ProgrammeStats = { oGV, oGTa, oGTe, iGV, iGTa, iGTe };
 
-  const [tab1, setTab1] = useState<TabKey>("oGV");
-  const [tab2, setTab2] = useState<TabKey>("oGV");
-  const [tab3, setTab3] = useState<TabKey>("oGV");
-  const [tab4, setTab4] = useState<TabKey>("oGV");
-  const [tab5, setTab5] = useState<TabKey>("oGV");
-  const [tab6, setTab6] = useState<TabKey>("oGV");
+  const [tab1, setTab1] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tab2, setTab2] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tab3, setTab3] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tab4, setTab4] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tab5, setTab5] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tab6, setTab6] = useState<TabKey>(() => getDefaultTab(mode, programme));
+
+  // Sync all card tabs when dashboard mode or programme filter changes
+  useEffect(() => {
+    const t = getDefaultTab(mode, programme);
+    setTab1(t); setTab2(t); setTab3(t); setTab4(t); setTab5(t); setTab6(t);
+  }, [mode, programme]);
 
   const entities         = useMemo(() => top10(entityRec(tab1, data)),             [tab1, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
   const lcs              = useMemo(() => top10(lcRec(tab2, data)),                 [tab2, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
