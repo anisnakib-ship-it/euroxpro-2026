@@ -8,7 +8,9 @@ import StatsCards from "./StatsCards";
 import ApprovalsChart from "./ApprovalsChart";
 import ApprovalsTable from "./ApprovalsTable";
 import RankingsCards from "./RankingsCards";
+import RegionalCollaboration from "./RegionalCollaboration";
 import Filters, { ActiveFilters, PROGRAMME_ID, EUROPE_REGION_ID } from "./Filters";
+import { mergeCountryMaps } from "@/lib/regions";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
@@ -105,6 +107,19 @@ export default function Dashboard({ onHackathon }: { onHackathon?: () => void } 
 
   const rankings = useRankingsData(filters.dateFrom, filters.dateTo);
 
+  // Regional collaboration: merge all programmes for oGX host side and iCX origin side
+  const oGXByHostCountry = useMemo(() => mergeCountryMaps(
+    rankings.oGV?.byHostCountry  ?? {},
+    rankings.oGTa?.byHostCountry ?? {},
+    rankings.oGTe?.byHostCountry ?? {},
+  ), [rankings.oGV, rankings.oGTa, rankings.oGTe]);
+
+  const iCXByHomeCountry = useMemo(() => mergeCountryMaps(
+    rankings.iGV?.byHomeCountry  ?? {},
+    rankings.iGTa?.byHomeCountry ?? {},
+    rankings.iGTe?.byHomeCountry ?? {},
+  ), [rankings.iGV, rankings.iGTa, rankings.iGTe]);
+
   const refreshAll = () => { refresh(); rankings.refresh(); };
 
   return (
@@ -180,6 +195,15 @@ export default function Dashboard({ onHackathon }: { onHackathon?: () => void } 
               loading={rankings.loading}
               mode={filters.mode}
               programme={filters.programme}
+            />
+          </RevealSection>
+
+          {/* Regional Collaboration */}
+          <RevealSection delay={0.18}>
+            <RegionalCollaboration
+              oGXByHostCountry={oGXByHostCountry}
+              iCXByHomeCountry={iCXByHomeCountry}
+              loading={rankings.loading}
             />
           </RevealSection>
 

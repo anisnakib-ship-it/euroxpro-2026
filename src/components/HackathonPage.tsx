@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,6 +14,8 @@ import {
   GOAL_TOTAL, HACK_LABEL, COMP_LABEL,
 } from "@/hooks/useHackathonData";
 import { Application } from "@/lib/api";
+import { computeHostCountryMap, computeOriginCountryMap } from "@/lib/regions";
+import RegionalCollaboration from "./dashboard/RegionalCollaboration";
 
 // ── Floating orbs (same as EntrancePage) ──────────────────────────────────────
 
@@ -408,6 +410,16 @@ export default function HackathonPage({ onBack }: { onBack: () => void }) {
   const growthLCs       = lcComparison.filter((x) => x.delta > 0 && x.last_year > 0).sort((a, b) => b.delta - a.delta);
   const zeroHeroEntities = entComparison.filter((x) => x.last_year === 0 && x.this_year > 0).sort((a, b) => b.this_year - a.this_year);
   const zeroHeroLCs      = lcComparison.filter((x) => x.last_year === 0 && x.this_year > 0).sort((a, b) => b.this_year - a.this_year);
+
+  // Regional collaboration — derived from raw 2026 hackathon arrays
+  const hackOGXByHost = useMemo(
+    () => computeHostCountryMap([...oGV26, ...oGTa26, ...oGTe26]),
+    [oGV26, oGTa26, oGTe26]
+  );
+  const hackICXByHome = useMemo(
+    () => computeOriginCountryMap([...iGV26, ...iGTa26, ...iGTe26]),
+    [iGV26, iGTa26, iGTe26]
+  );
 
   // Search for approvals log
   const [search, setSearch] = useState("");
@@ -819,7 +831,20 @@ export default function HackathonPage({ onBack }: { onBack: () => void }) {
             </div>
           </motion.div>
 
-          {/* ── F. Approvals Log ── */}
+          {/* ── F. Regional Collaboration ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.22 }}
+          >
+            <RegionalCollaboration
+              oGXByHostCountry={hackOGXByHost}
+              iCXByHomeCountry={hackICXByHome}
+              loading={loading}
+            />
+          </motion.div>
+
+          {/* ── G. Approvals Log ── */}
           <motion.div
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
