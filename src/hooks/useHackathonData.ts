@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { fetchStatsApplications, EUROPE_REGION_ID, Application } from "@/lib/api";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Application, PROGRAMME_BY_ID } from "@/lib/api";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -11,8 +11,6 @@ export const COMP_LABEL = "Mar 17–25, 2025";
 
 const HACK_FROM = "2026-03-23";
 const HACK_TO   = "2026-03-31";
-const COMP_FROM = "2025-03-17";
-const COMP_TO   = "2025-03-25";
 
 // All 9 days of the hackathon
 const HACK_DAYS: string[] = [];
@@ -48,6 +46,24 @@ export function buildComparison(
   return result;
 }
 
+// ── Programme split ────────────────────────────────────────────────────────────
+
+interface ProgrammeSplit { GV: Application[]; GTa: Application[]; GTe: Application[]; }
+
+function splitByProgramme(apps: Application[]): ProgrammeSplit {
+  const GV: Application[] = [], GTa: Application[] = [], GTe: Application[] = [];
+  for (const app of apps) {
+    const prog =
+      app.opportunity?.programme?.short_name_display ||
+      PROGRAMME_BY_ID[app.opportunity?.programme?.id] ||
+      app.opportunity?.programme?.short_name;
+    if (prog === "GV") GV.push(app);
+    else if (prog === "GTa") GTa.push(app);
+    else if (prog === "GTe") GTe.push(app);
+  }
+  return { GV, GTa, GTe };
+}
+
 // ── Sparkline builder ──────────────────────────────────────────────────────────
 
 function buildSparkline(
@@ -55,7 +71,7 @@ function buildSparkline(
 ): { date: string; rawDate: string; count: number; cumulative: number; goal: number }[] {
   const byDay: Record<string, number> = {};
   for (const app of allApps2026) {
-    const day = (app.date_approved ?? app.created_at ?? "").slice(0, 10);
+    const day = (app.date_approved ?? "").slice(0, 10);
     if (day && HACK_DAYS.includes(day)) {
       byDay[day] = (byDay[day] ?? 0) + 1;
     }
@@ -107,10 +123,20 @@ export interface HackathonData {
   refresh: () => void;
 }
 
+// ── SSE payload shape (mirrors stream/route.ts fetchSnapshot return) ───────────
+
+interface StreamSnapshot {
+  oAll26: Application[];
+  iAll26: Application[];
+  oAll25: Application[];
+  iAll25: Application[];
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useHackathonData(): HackathonData {
-  const [refreshKey, setRefreshKey] = useState(0);
+  // esKey increment → closes current EventSource → opens a new one → gets fresh data immediately
+  const [esKey, setEsKey] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [oGV26, setOGV26] = useState<Application[]>([]);
@@ -127,96 +153,66 @@ export function useHackathonData(): HackathonData {
   const [iGTa25, setIGTa25] = useState<Application[]>([]);
   const [iGTe25, setIGTe25] = useState<Application[]>([]);
 
-  const loadAll = useCallback(async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const base26oGX = {
-        person_home_region: [EUROPE_REGION_ID],
-        date_approved: { from: HACK_FROM, to: HACK_TO },
-      };
-      const base26iCX = {
-        opportunity_home_region: [EUROPE_REGION_ID],
-        date_approved: { from: HACK_FROM, to: HACK_TO },
-      };
-      const base25oGX = {
-        person_home_region: [EUROPE_REGION_ID],
-        date_approved: { from: COMP_FROM, to: COMP_TO },
-      };
-      const base25iCX = {
-        opportunity_home_region: [EUROPE_REGION_ID],
-        date_approved: { from: COMP_FROM, to: COMP_TO },
-      };
 
-      const [
-        _oGV26, _oGTa26, _oGTe26,
-        _iGV26, _iGTa26, _iGTe26,
-        _oGV25, _oGTa25, _oGTe25,
-        _iGV25, _iGTa25, _iGTe25,
-      ] = await Promise.all([
-        fetchStatsApplications({ ...base26oGX, programmes: [7] }),
-        fetchStatsApplications({ ...base26oGX, programmes: [8] }),
-        fetchStatsApplications({ ...base26oGX, programmes: [9] }),
-        fetchStatsApplications({ ...base26iCX, programmes: [7] }),
-        fetchStatsApplications({ ...base26iCX, programmes: [8] }),
-        fetchStatsApplications({ ...base26iCX, programmes: [9] }),
-        fetchStatsApplications({ ...base25oGX, programmes: [7] }),
-        fetchStatsApplications({ ...base25oGX, programmes: [8] }),
-        fetchStatsApplications({ ...base25oGX, programmes: [9] }),
-        fetchStatsApplications({ ...base25iCX, programmes: [7] }),
-        fetchStatsApplications({ ...base25iCX, programmes: [8] }),
-        fetchStatsApplications({ ...base25iCX, programmes: [9] }),
-      ]);
+    const es = new EventSource("/api/gis/stream");
 
-      setOGV26(_oGV26);
-      setOGTa26(_oGTa26);
-      setOGTe26(_oGTe26);
-      setIGV26(_iGV26);
-      setIGTa26(_iGTa26);
-      setIGTe26(_iGTe26);
-      setOGV25(_oGV25);
-      setOGTa25(_oGTa25);
-      setOGTe25(_oGTe25);
-      setIGV25(_iGV25);
-      setIGTa25(_iGTa25);
-      setIGTe25(_iGTe25);
-    } catch {
-      // silently fall back to empty arrays already set
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    es.onmessage = (event) => {
+      try {
+        const { oAll26, iAll26, oAll25, iAll25 } =
+          JSON.parse(event.data) as StreamSnapshot;
 
-  useEffect(() => {
-    loadAll();
-    const id = setInterval(() => setRefreshKey((k) => k + 1), 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [loadAll]);
+        const o26 = splitByProgramme(oAll26);
+        const i26 = splitByProgramme(iAll26);
+        const o25 = splitByProgramme(oAll25);
+        const i25 = splitByProgramme(iAll25);
 
-  useEffect(() => {
-    if (refreshKey > 0) loadAll();
-  }, [refreshKey, loadAll]);
+        setOGV26(o26.GV);  setOGTa26(o26.GTa);  setOGTe26(o26.GTe);
+        setIGV26(i26.GV);  setIGTa26(i26.GTa);  setIGTe26(i26.GTe);
+        setOGV25(o25.GV);  setOGTa25(o25.GTa);  setOGTe25(o25.GTe);
+        setIGV25(i25.GV);  setIGTa25(i25.GTa);  setIGTe25(i25.GTe);
+      } catch {
+        // Malformed message — ignore, wait for next tick
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const oGX2026 = oGV26.length + oGTa26.length + oGTe26.length;
-  const iCX2026 = iGV26.length + iGTa26.length + iGTe26.length;
-  const oGX2025 = oGV25.length + oGTa25.length + oGTe25.length;
-  const iCX2025 = iGV25.length + iGTa25.length + iGTe25.length;
-  const total2026 = oGX2026 + iCX2026;
-  const total2025 = oGX2025 + iCX2025;
+    es.onerror = () => {
+      // EventSource auto-reconnects on network drops.
+      // On reconnect the server sends the latest snapshot immediately (no stale gap).
+    };
 
-  const all2026 = [
+    return () => es.close(); // cleanup on unmount or esKey change
+  }, [esKey]);
+
+  const oGX2026 = useMemo(() => oGV26.length + oGTa26.length + oGTe26.length, [oGV26, oGTa26, oGTe26]);
+  const iCX2026 = useMemo(() => iGV26.length + iGTa26.length + iGTe26.length, [iGV26, iGTa26, iGTe26]);
+  const oGX2025 = useMemo(() => oGV25.length + oGTa25.length + oGTe25.length, [oGV25, oGTa25, oGTe25]);
+  const iCX2025 = useMemo(() => iGV25.length + iGTa25.length + iGTe25.length, [iGV25, iGTa25, iGTe25]);
+  const total2026 = useMemo(() => oGX2026 + iCX2026, [oGX2026, iCX2026]);
+  const total2025 = useMemo(() => oGX2025 + iCX2025, [oGX2025, iCX2025]);
+
+  const all2026 = useMemo(() => [
     ...oGV26, ...oGTa26, ...oGTe26,
     ...iGV26, ...iGTa26, ...iGTe26,
-  ];
+  ], [oGV26, oGTa26, oGTe26, iGV26, iGTa26, iGTe26]);
 
-  const sparkline = buildSparkline(all2026);
+  const sparkline = useMemo(() => buildSparkline(all2026), [all2026]);
 
-  const recentApps = [...all2026].sort((a, b) => {
-    const da = (a.date_approved ?? a.created_at ?? "");
-    const db = (b.date_approved ?? b.created_at ?? "");
-    return db.localeCompare(da);
-  });
+  const recentApps = useMemo(() =>
+    [...all2026].sort((a, b) => {
+      const da = (a.date_approved ?? a.created_at ?? "");
+      const db = (b.date_approved ?? b.created_at ?? "");
+      return db.localeCompare(da);
+    }),
+    [all2026]
+  );
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  // Force-refresh: closes current EventSource, opens a new one.
+  // The server sends the latest snapshot immediately on connect — no wait for next 30 s tick.
+  const refresh = useCallback(() => setEsKey((k) => k + 1), []);
 
   return {
     oGV26, oGTa26, oGTe26,
