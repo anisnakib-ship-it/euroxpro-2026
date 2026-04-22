@@ -9,7 +9,7 @@ export const REGION_META: Record<RegionKey, {
 }> = {
   EUR:      { label: "Europe",              shortLabel: "EUR",  color: "#674ea7" },
   MEA:      { label: "Middle East & Africa",shortLabel: "MEA",  color: "#F48924" },
-  APAC:     { label: "Asia Pacific",        shortLabel: "APAC", color: "#0CB9C1" },
+  APAC:     { label: "Asia Pacific",        shortLabel: "AP", color: "#0CB9C1" },
   AMERICAS: { label: "Americas",            shortLabel: "AM",   color: "#F85A40" },
 };
 
@@ -28,7 +28,7 @@ const COUNTRY_REGION: Record<string, RegionKey> = {
   Iceland: "EUR", Ireland: "EUR", Italy: "EUR", Kosovo: "EUR",
   "Kosovo Republic": "EUR", Latvia: "EUR", Liechtenstein: "EUR",
   Lithuania: "EUR", Luxembourg: "EUR", Malta: "EUR", Moldova: "EUR",
-  Monaco: "EUR", Montenegro: "EUR", Netherlands: "EUR",
+  Monaco: "EUR", Montenegro: "EUR", Netherlands: "EUR", "The Netherlands": "EUR",
   "North Macedonia": "EUR", Macedonia: "EUR", Norway: "EUR",
   Poland: "EUR", Portugal: "EUR", Romania: "EUR", Russia: "EUR",
   "San Marino": "EUR", Serbia: "EUR", Slovakia: "EUR", Slovenia: "EUR",
@@ -41,7 +41,7 @@ const COUNTRY_REGION: Record<string, RegionKey> = {
   Cameroon: "MEA", "Cape Verde": "MEA", "Central African Republic": "MEA",
   Chad: "MEA", Comoros: "MEA", Congo: "MEA",
   "Republic of the Congo": "MEA", "Democratic Republic of the Congo": "MEA",
-  "DR Congo": "MEA", "Côte d'Ivoire": "MEA", "Ivory Coast": "MEA",
+  "DR Congo": "MEA", "Côte d'Ivoire": "MEA", "Cote D'Ivoire": "MEA", "Ivory Coast": "MEA",
   Djibouti: "MEA", Egypt: "MEA", "Equatorial Guinea": "MEA",
   Eritrea: "MEA", Eswatini: "MEA", Swaziland: "MEA", Ethiopia: "MEA",
   Gabon: "MEA", Gambia: "MEA", Ghana: "MEA", Guinea: "MEA",
@@ -65,13 +65,15 @@ const COUNTRY_REGION: Record<string, RegionKey> = {
   Bhutan: "APAC", Brunei: "APAC", Cambodia: "APAC", China: "APAC",
   Fiji: "APAC", "Hong Kong": "APAC", India: "APAC", Indonesia: "APAC",
   Japan: "APAC", Kazakhstan: "APAC", Kyrgyzstan: "APAC",
+  "Kyrgyzstan ": "APAC",
   Laos: "APAC", Malaysia: "APAC", Maldives: "APAC", Mongolia: "APAC",
   Myanmar: "APAC", Nepal: "APAC", "New Zealand": "APAC",
   "North Korea": "APAC", "Papua New Guinea": "APAC", Philippines: "APAC",
-  Singapore: "APAC", "South Korea": "APAC", "Sri Lanka": "APAC",
+  Singapore: "APAC", "South Korea": "APAC", Korea: "APAC", "Sri Lanka": "APAC",
   Taiwan: "APAC", Tajikistan: "APAC", Thailand: "APAC",
   "Timor-Leste": "APAC", "East Timor": "APAC", Turkmenistan: "APAC",
-  Uzbekistan: "APAC", Vietnam: "APAC", Macau: "APAC", Macao: "APAC",
+  Uzbekistan: "APAC", Vietnam: "APAC", VIETNAM: "APAC", Macau: "APAC", Macao: "APAC",
+  "Mainland of China": "APAC", "Mainland China": "APAC", "China, Mainland": "APAC",
 
   // AMERICAS
   "Antigua and Barbuda": "AMERICAS", Argentina: "AMERICAS",
@@ -90,8 +92,14 @@ const COUNTRY_REGION: Record<string, RegionKey> = {
   USA: "AMERICAS", Uruguay: "AMERICAS", Venezuela: "AMERICAS",
 };
 
+// Case-insensitive lookup index (built once)
+const COUNTRY_REGION_LC: Record<string, RegionKey> = {};
+for (const [k, v] of Object.entries(COUNTRY_REGION)) {
+  COUNTRY_REGION_LC[k.toLowerCase()] = v;
+}
+
 export function getRegion(country: string): RegionKey | null {
-  return COUNTRY_REGION[country] ?? null;
+  return COUNTRY_REGION[country] ?? COUNTRY_REGION_LC[country.toLowerCase()] ?? null;
 }
 
 // Sum a country→count map into region→count totals
@@ -100,7 +108,7 @@ export function aggregateByRegion(
 ): Record<RegionKey, number> {
   const result: Record<RegionKey, number> = { EUR: 0, MEA: 0, APAC: 0, AMERICAS: 0 };
   for (const [country, count] of Object.entries(byCountry)) {
-    const region = COUNTRY_REGION[country];
+    const region = COUNTRY_REGION[country] ?? COUNTRY_REGION_LC[country.toLowerCase()];
     if (region) result[region] += count;
   }
   return result;
@@ -122,8 +130,6 @@ export function computeHostCountryMap(apps: Application[]): Record<string, numbe
   const map: Record<string, number> = {};
   for (const app of apps) {
     const c =
-      app.home_mc?.country ??
-      app.opportunity?.home_mc?.country ??
       app.home_mc?.name ??
       app.opportunity?.home_mc?.name;
     if (c) map[c] = (map[c] ?? 0) + 1;
@@ -132,13 +138,11 @@ export function computeHostCountryMap(apps: Application[]): Record<string, numbe
 }
 
 // Build origin-country map from raw iCX applications (where incoming EPs come from)
+// Only use MC name — LC names are office names (e.g. "BARDO"), not countries
 export function computeOriginCountryMap(apps: Application[]): Record<string, number> {
   const map: Record<string, number> = {};
   for (const app of apps) {
-    const c =
-      app.person?.home_mc?.country ??
-      app.person?.home_lc?.country ??
-      app.person?.home_mc?.name;
+    const c = app.person?.home_mc?.name;
     if (c) map[c] = (map[c] ?? 0) + 1;
   }
   return map;

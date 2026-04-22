@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchApplications, fetchStatsApplications, computeStats, Application, ApprovalStats, ProgrammeTotals } from "@/lib/api";
 
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  if (v !== null && typeof v === "object") {
+    return `{${Object.keys(v as object).sort().map(
+      k => `"${k}":${stableStringify((v as Record<string, unknown>)[k])}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
 export function useApprovals(filters: Record<string, unknown> = {}) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApprovalStats | null>(null);
@@ -63,14 +73,12 @@ export function useApprovals(filters: Record<string, unknown> = {}) {
         setRefreshing(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(filters)]
+    [stableStringify(filters)]
   );
 
   useEffect(() => {
     load(page);
-    const id = setInterval(() => load(page), 5 * 60 * 1000);
-    return () => clearInterval(id);
+    // No auto-refresh — use the manual refresh button instead
   }, [load, page]);
 
   const refresh = useCallback(() => load(page), [load, page]);
@@ -112,16 +120,16 @@ function generateMockData(): Application[] {
         id: String(2000 + i),
         title: `${prog} Opportunity ${i + 1}`,
         programme: { id: String([7, 8, 9][i % 3]), short_name: prog === "GTa" ? "GT" : prog === "GTe" ? "GT" : prog, short_name_display: prog },
-        home_lc: { id: String(3000 + i), name: host.lc, country: host.country, tag: "LC" },
-        home_mc: { id: String(3100 + i), name: host.mc, country: host.country, tag: "MC" },
+        home_lc: { id: String(3000 + i), name: host.lc, tag: "LC" },
+        home_mc: { id: String(3100 + i), name: host.mc, tag: "MC" },
       },
-      host_lc: { id: String(3000 + i), name: host.lc, country: host.country, tag: "LC" },
-      home_mc:  { id: String(3100 + i), name: host.mc, country: host.country, tag: "MC" },
+      host_lc: { id: String(3000 + i), name: host.lc, tag: "LC" },
+      home_mc:  { id: String(3100 + i), name: host.mc, tag: "MC" },
       person: {
         id: String(4000 + i),
         full_name: `Member ${i + 1}`,
-        home_lc: { id: String(5000 + i), name: `LC ${homeCountry}`, country: null, tag: "LC" },
-        home_mc: { id: String(5100 + i), name: homeCountry, country: homeCountry, tag: "MC" },
+        home_lc: { id: String(5000 + i), name: `LC ${homeCountry}`, tag: "LC" },
+        home_mc: { id: String(5100 + i), name: homeCountry, tag: "MC" },
       },
     };
   });

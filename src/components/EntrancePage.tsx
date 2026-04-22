@@ -206,6 +206,7 @@ const fadeUp = {
 export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => void; onHackathon: () => void }) {
   const shouldReduce = useReducedMotion();
   const [totals, setTotals] = useState({ oGX: 0, iCX: 0 });
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -216,7 +217,8 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
         oGX: oGX.GV + oGX.GTa + oGX.GTe,
         iCX: iCX.GV + iCX.GTa + iCX.GTe,
       });
-    }).catch(() => {});
+      setFetchFailed(false);
+    }).catch(() => setFetchFailed(true));
   }, []);
   return (
     <motion.div
@@ -322,7 +324,7 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
             />
           </motion.div>
 
-          {/* Hackathon pill right */}
+          {/* EuroXpro Games 2026 pill right */}
           <motion.div
             className="flex items-center gap-2.5 px-4 py-2 rounded-full border"
             style={{
@@ -345,7 +347,7 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
               <Zap className="w-3.5 h-3.5 text-[#a78bfa]" />
             </motion.div>
             <span className="text-[11px] font-bold tracking-wide" style={{ color: "rgba(255,255,255,0.55)" }}>
-              Hackathon 2026 · March 25–29
+              EuroXpro Games 2026 · March 25–29
             </span>
           </motion.div>
         </motion.div>
@@ -491,7 +493,10 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
                 <div className="flex flex-col items-center gap-1.5">
                   <span
                     className="text-4xl md:text-5xl font-black tabular-nums"
-                    style={{ color: "#2dd4bf" }}
+                    style={{
+                      color: "#ffffff",
+                      textShadow: "0 0 18px rgba(255,255,255,0.85), 0 0 48px rgba(255,255,255,0.4), 0 0 90px rgba(255,255,255,0.18)",
+                    }}
                   >
                     <CountUp target={totals.iCX} delay={1050} />
                   </span>
@@ -503,6 +508,11 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
                   </span>
                 </div>
               </div>
+              {fetchFailed && (
+                <p className="text-center text-[11px] mt-3" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  Live data unavailable
+                </p>
+              )}
             </motion.div>
 
             {/* Programme pills */}
@@ -630,7 +640,7 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
                   />
                 </motion.button>
 
-                {/* Hackathon Tracker */}
+                {/* EuroXpro Games 2026 */}
                 <motion.button
                   onClick={onHackathon}
                   className="group relative flex items-center gap-3 px-7 py-3.5 rounded-2xl cursor-pointer focus-visible:outline-none overflow-hidden"
@@ -663,7 +673,7 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
                     <Zap className="w-5 h-5" style={{ color: "#F85A40" }} />
                   </motion.div>
                   <span className="text-white font-bold text-base tracking-wide relative z-10">
-                    Hackathon Tracker
+                    EuroXpro Games 2026
                   </span>
                 </motion.button>
               </div>
@@ -718,7 +728,7 @@ export default function EntrancePage({ onEnter, onHackathon }: { onEnter: () => 
               animate={{ opacity: [0.4, 1, 0.4] }}
               transition={{ duration: 2, repeat: Infinity }}
             />
-            Approvals Tracker · Hackathon March 25–29, 2026
+            Approvals Tracker · EuroXpro Games 2026 · March 25–29
             <motion.span
               className="w-1 h-1 rounded-full inline-block"
               style={{ backgroundColor: "#037EF3" }}

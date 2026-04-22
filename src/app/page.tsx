@@ -5,9 +5,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import EntrancePage from "@/components/EntrancePage";
 import Dashboard from "@/components/dashboard/Dashboard";
 import HackathonPage from "@/components/HackathonPage";
+import ComingSoon from "@/components/ComingSoon";
+
+const IS_LIVE = process.env.NEXT_PUBLIC_SITE_LIVE === "true";
 
 export default function Home() {
   const [view, setView] = useState<"entrance" | "dashboard" | "hackathon">("entrance");
+
+  if (!IS_LIVE) return <ComingSoon />;
 
   return (
     <AnimatePresence mode="wait">

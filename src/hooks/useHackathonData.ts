@@ -194,10 +194,18 @@ export function useHackathonData(): HackathonData {
   const total2026 = useMemo(() => oGX2026 + iCX2026, [oGX2026, iCX2026]);
   const total2025 = useMemo(() => oGX2025 + iCX2025, [oGX2025, iCX2025]);
 
-  const all2026 = useMemo(() => [
-    ...oGV26, ...oGTa26, ...oGTe26,
-    ...iGV26, ...iGTa26, ...iGTe26,
-  ], [oGV26, oGTa26, oGTe26, iGV26, iGTa26, iGTe26]);
+  const all2026 = useMemo(() => {
+    const combined = [
+      ...oGV26, ...oGTa26, ...oGTe26,
+      ...iGV26, ...iGTa26, ...iGTe26,
+    ];
+    const seen = new Set<string>();
+    return combined.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+  }, [oGV26, oGTa26, oGTe26, iGV26, iGTa26, iGTe26]);
 
   const sparkline = useMemo(() => buildSparkline(all2026), [all2026]);
 

@@ -1,35 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { Filter, RefreshCw, Calendar, X, ArrowUpRight, ArrowDownLeft, Zap } from "lucide-react";
 
-const INTERVAL_MS = 5 * 60 * 1000;
-
-function AutoRefreshCountdown({ lastUpdated }: { lastUpdated: Date | null }) {
-  const [, tick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => tick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!lastUpdated) return null;
-
-  const secsLeft = Math.max(
-    0,
-    Math.ceil((lastUpdated.getTime() + INTERVAL_MS - Date.now()) / 1000)
-  );
-  const mins = Math.floor(secsLeft / 60);
-  const secs = secsLeft % 60;
-
-  return (
-    <span className="text-white/20 text-[10px] font-data tabular-nums">
-      {mins}:{secs.toString().padStart(2, "0")}
-    </span>
-  );
-}
 
 export const PROGRAMME_ID: Record<string, number> = { GV: 7, GTa: 8, GTe: 9 };
 export const EUROPE_REGION_ID = 1629;
@@ -67,8 +41,20 @@ const MODES: { key: ExchangeMode; label: string; sub: string; icon: React.Elemen
 
 export default function Filters({ filters, onChange, onRefresh, loading, refreshing, lastUpdated, onHackathon }: Props) {
   const setProg = (p: string) => onChange({ ...filters, programme: p });
-  const setFrom = (v: string) => onChange({ ...filters, dateFrom: v });
-  const setTo   = (v: string) => onChange({ ...filters, dateTo: v });
+  const setFrom = (v: string) => {
+    if (v && filters.dateTo && v > filters.dateTo) {
+      onChange({ ...filters, dateFrom: filters.dateTo, dateTo: v });
+    } else {
+      onChange({ ...filters, dateFrom: v });
+    }
+  };
+  const setTo = (v: string) => {
+    if (v && filters.dateFrom && v < filters.dateFrom) {
+      onChange({ ...filters, dateFrom: v, dateTo: filters.dateFrom });
+    } else {
+      onChange({ ...filters, dateTo: v });
+    }
+  };
   const setMode = (m: ExchangeMode) => onChange({ ...filters, mode: m, programme: "all" });
   const clearDates = () => onChange({ ...filters, dateFrom: "", dateTo: "" });
   const hasDateFilter = filters.dateFrom || filters.dateTo;
@@ -238,7 +224,7 @@ export default function Filters({ filters, onChange, onRefresh, loading, refresh
           )}
         </div>
 
-        {/* Refresh + Hackathon nav */}
+        {/* Refresh + EuroXpro Games 2026 nav */}
         <div className="ml-auto flex items-center gap-2">
           {onHackathon && (
             <motion.button
@@ -251,18 +237,13 @@ export default function Filters({ filters, onChange, onRefresh, loading, refresh
                 borderColor: "rgba(248,90,64,0.35)",
                 color: "#F85A40",
               }}
-              aria-label="Go to Hackathon Tracker"
+              aria-label="Go to EuroXpro Games 2026"
             >
               <Zap className="w-3 h-3" />
-              Hackathon
+              EuroXpro Games
             </motion.button>
           )}
-          {lastUpdated && (
-            <div className="flex items-center gap-1.5">
-              <span className="w-1 h-1 rounded-full bg-emerald-400/50 inline-block" />
-              <AutoRefreshCountdown lastUpdated={lastUpdated} />
-            </div>
-          )}
+
           <motion.button
             onClick={onRefresh}
             disabled={isBusy}

@@ -159,7 +159,7 @@ export default function ApprovalsChart({ stats, loading, refreshing }: Props) {
               <XAxis
                 dataKey="date"
                 tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10, fontFamily: "'Fira Code', monospace" }}
-                tickFormatter={(v) => v.slice(5)}
+                tickFormatter={(v: string) => (typeof v === "string" && v.length >= 5 ? v.slice(5) : v)}
                 axisLine={false} tickLine={false}
               />
               <YAxis

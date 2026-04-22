@@ -202,7 +202,7 @@ export default function Header() {
               <span className="text-white/40 text-[10px] font-bold tracking-widest uppercase">Global</span>
             </motion.div>
 
-            {/* Hackathon badge */}
+            {/* EuroXpro Games 2026 badge */}
             <motion.div
               className="flex items-center gap-2.5 rounded-xl px-4 py-2.5 border cursor-default"
               style={{
@@ -219,7 +219,7 @@ export default function Header() {
                 <Zap className="w-4 h-4 text-[#a78bfa]" />
               </motion.div>
               <div>
-                <div className="text-white text-sm font-bold leading-tight">Hackathon 2026</div>
+                <div className="text-white text-sm font-bold leading-tight">EuroXpro Games 2026</div>
                 <div className="text-white/40 text-[11px]">March 25 → 29</div>
               </div>
             </motion.div>

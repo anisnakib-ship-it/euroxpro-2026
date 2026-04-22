@@ -48,7 +48,6 @@ export interface Programme {
 export interface Office {
   id: string;
   name: string;
-  country?: string | null; // plain String scalar on the API
   tag?: string;            // "LC" | "MC" | "Region" | "Global"
 }
 
@@ -117,17 +116,17 @@ const APPLICATIONS_QUERY = `
         person {
           id
           full_name
-          home_lc { id name country tag }
-          home_mc { id name country tag }
+          home_lc { id name tag }
+          home_mc { id name tag }
         }
-        host_lc { id name country tag }
-        home_mc  { id name country tag }
+        host_lc { id name tag }
+        home_mc  { id name tag }
         opportunity {
           id
           title
           programme { id short_name short_name_display }
-          home_lc   { id name country tag }
-          home_mc   { id name country tag }
+          home_lc   { id name tag }
+          home_mc   { id name tag }
         }
       }
       paging { total_items total_pages current_page }
@@ -215,8 +214,74 @@ export async function fetchEuropeMCs(): Promise<Office[]> {
   }
 }
 
-export function computeStats(applications: Application[]): ApprovalStats {
-  // Loop 1: build byDayMap only (needed to compute midDate first)
+// Helper: count home-entity occurrences by MC id (deduplicates name variants).
+function countByHomeEntity(apps: Application[]): Record<string, number> {
+  const byId: Record<string, { name: string; count: number }> = {};
+  for (const app of apps) {
+    const id = app.person?.home_mc?.id;
+    const name = app.person?.home_mc?.name ?? app.person?.home_lc?.name ?? "Unknown";
+    if (name === "Unknown") continue;
+    const key = id ?? `name:${name}`;
+    if (!byId[key]) byId[key] = { name, count: 0 };
+    if (app.person?.home_mc?.name) byId[key].name = app.person.home_mc.name;
+    byId[key].count += 1;
+  }
+  return Object.fromEntries(Object.values(byId).map(({ name, count }) => [name, count]));
+}
+
+// Helper: count host-entity occurrences by MC id (deduplicates name variants).
+function countByHostEntity(apps: Application[]): Record<string, number> {
+  const byId: Record<string, { name: string; count: number }> = {};
+  for (const app of apps) {
+    const id = app.home_mc?.id ?? app.opportunity?.home_mc?.id;
+    const name = app.home_mc?.name ?? app.opportunity?.home_mc?.name ?? "Unknown";
+    if (name === "Unknown") continue;
+    const key = id ?? `name:${name}`;
+    if (!byId[key]) byId[key] = { name, count: 0 };
+    if (app.home_mc?.name) byId[key].name = app.home_mc.name;
+    else if (app.opportunity?.home_mc?.name) byId[key].name = app.opportunity.home_mc.name;
+    byId[key].count += 1;
+  }
+  return Object.fromEntries(Object.values(byId).map(({ name, count }) => [name, count]));
+}
+
+// Helper: count LC occurrences by id (deduplicates name variants), returns name-keyed map.
+// Falls back to name-keyed bucket when id is null so LCs with missing IDs are still counted.
+function countByLCId(
+  apps: Application[],
+  getLCId: (a: Application) => string | undefined,
+  getLCName: (a: Application) => string | undefined,
+): Record<string, number> {
+  const byId: Record<string, { name: string; count: number }> = {};
+  for (const app of apps) {
+    const id = getLCId(app);
+    const name = getLCName(app) ?? "Unknown";
+    if (name === "Unknown") continue;
+    const key = id ?? `name:${name}`;
+    if (!byId[key]) byId[key] = { name, count: 0 };
+    byId[key].count += 1;
+  }
+  return Object.fromEntries(Object.values(byId).map(({ name, count }) => [name, count]));
+}
+
+// Helper: build growth record — recent = current period, older = prior year period
+function buildGrowthRecord(
+  current: Record<string, number>,
+  prior: Record<string, number>,
+): Record<string, { recent: number; older: number }> {
+  const out: Record<string, { recent: number; older: number }> = {};
+  const all = new Set([...Object.keys(current), ...Object.keys(prior)]);
+  for (const k of all) {
+    out[k] = { recent: current[k] ?? 0, older: prior[k] ?? 0 };
+  }
+  return out;
+}
+
+export function computeStats(
+  applications: Application[],
+  priorApplications?: Application[],
+): ApprovalStats {
+  // Loop 1: byDayMap for chart
   const byDayMap: Record<string, number> = {};
   for (const app of applications) {
     const dateStr = app.date_approved ?? app.created_at;
@@ -226,31 +291,15 @@ export function computeStats(applications: Application[]): ApprovalStats {
     }
   }
 
-  // Compute midDate as the true temporal midpoint between first and last approval date.
-  // Using the calendar midpoint (not median array index) ensures "older" = first half of
-  // the time range and "recent" = second half — regardless of where activity is clustered.
-  const allDates = Object.keys(byDayMap).sort();
-  const midDate =
-    allDates.length > 1
-      ? new Date(
-          (new Date(allDates[0]).getTime() + new Date(allDates[allDates.length - 1]).getTime()) / 2
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "";
-
-  // Loop 2: build everything else including all growth fields
+  // Loop 2: current-period stats (programme, country, LC breakdowns)
+  // MC-level maps are id-keyed to deduplicate name variants (e.g. "Polska" vs "Poland")
   const byProgramme: Record<string, number> = {};
-  const byHomeCountry: Record<string, number> = {};
-  const byHostCountry: Record<string, number> = {};
-  const growthByHomeEntity: Record<string, { recent: number; older: number }> = {};
-  const growthByHostEntity: Record<string, { recent: number; older: number }> = {};
-  // LC aggregation: keyed by id to merge name variants of the same entity across records
-  const homeLCById: Record<string, { name: string; count: number; recent: number; older: number }> = {};
-  const hostLCById: Record<string, { name: string; count: number; recent: number; older: number }> = {};
+  const homeMCById: Record<string, { name: string; count: number }> = {};
+  const hostMCById: Record<string, { name: string; count: number }> = {};
+  const homeLCById: Record<string, { name: string; count: number }> = {};
+  const hostLCById: Record<string, { name: string; count: number }> = {};
 
   for (const app of applications) {
-    // Use short_name_display (GV / GTa / GTe) as key
     const prog =
       app.opportunity?.programme?.short_name_display ||
       PROGRAMME_BY_ID[app.opportunity?.programme?.id] ||
@@ -258,90 +307,72 @@ export function computeStats(applications: Application[]): ApprovalStats {
       "Other";
     byProgramme[prog] = (byProgramme[prog] ?? 0) + 1;
 
-    // By home country (EP's country) — prefer home_mc.country (MC-level, always populated)
-    // over home_lc.country (LC-level, often null) to avoid Turkey 84-vs-1018 style splits
-    const homeCountry =
-      app.person?.home_mc?.country ??
-      app.person?.home_lc?.country ??
-      app.person?.home_mc?.name ??
-      app.person?.home_lc?.name ??
-      "Unknown";
-    if (homeCountry) byHomeCountry[homeCountry] = (byHomeCountry[homeCountry] ?? 0) + 1;
+    // Home entity (id-keyed dedup)
+    const homeMCId = app.person?.home_mc?.id;
+    const homeName = app.person?.home_mc?.name ?? app.person?.home_lc?.name ?? "Unknown";
+    if (homeName !== "Unknown") {
+      const hKey = homeMCId ?? `name:${homeName}`;
+      if (!homeMCById[hKey]) homeMCById[hKey] = { name: homeName, count: 0 };
+      if (app.person?.home_mc?.name) homeMCById[hKey].name = app.person.home_mc.name;
+      homeMCById[hKey].count += 1;
+    }
 
-    // By host country — MC-level first (host_lc.country is often null, same as home_lc.country).
-    // app.home_mc = Host MC (abroad for oGX, European for iCX).
-    // opportunity.home_mc is identical but kept as extra fallback.
-    const hostCountry =
-      app.home_mc?.country ??
-      app.opportunity?.home_mc?.country ??
-      app.host_lc?.country ??
-      app.home_mc?.name ??
-      app.opportunity?.home_mc?.name ??
-      app.host_lc?.name ??
-      "Unknown";
-    if (hostCountry !== "Unknown") byHostCountry[hostCountry] = (byHostCountry[hostCountry] ?? 0) + 1;
+    // Host entity (id-keyed dedup)
+    const hostMCId = app.home_mc?.id ?? app.opportunity?.home_mc?.id;
+    const hostName = app.home_mc?.name ?? app.opportunity?.home_mc?.name ?? app.host_lc?.name ?? "Unknown";
+    if (hostName !== "Unknown") {
+      const tKey = hostMCId ?? `name:${hostName}`;
+      if (!hostMCById[tKey]) hostMCById[tKey] = { name: hostName, count: 0 };
+      if (app.home_mc?.name) hostMCById[tKey].name = app.home_mc.name;
+      else if (app.opportunity?.home_mc?.name) hostMCById[tKey].name = app.opportunity.home_mc.name;
+      hostMCById[tKey].count += 1;
+    }
 
-    // Growth bucket — null when midDate is empty (dataset has 0–1 unique dates),
-    // which means growth comparisons are not meaningful for this filter range.
-    const dateStr = (app.date_approved ?? app.created_at ?? "").slice(0, 10);
-    const bucket: "recent" | "older" | null =
-      midDate && dateStr ? (dateStr >= midDate ? "recent" : "older") : null;
-
-    // By home LC — keyed by id to merge name variants of the same entity
     const homeLCId = app.person?.home_lc?.id;
     const homeLCName = app.person?.home_lc?.name ?? "Unknown";
-    if (homeLCId && homeLCName !== "Unknown") {
-      if (!homeLCById[homeLCId]) homeLCById[homeLCId] = { name: homeLCName, count: 0, recent: 0, older: 0 };
-      homeLCById[homeLCId].count += 1;
-      if (bucket) homeLCById[homeLCId][bucket] += 1;
+    if (homeLCName !== "Unknown") {
+      const homeLCKey = homeLCId ?? `name:${homeLCName}`;
+      if (!homeLCById[homeLCKey]) homeLCById[homeLCKey] = { name: homeLCName, count: 0 };
+      homeLCById[homeLCKey].count += 1;
     }
 
-    // By host LC — keyed by id
     const hostLCId = app.host_lc?.id;
     const hostLCName = app.host_lc?.name ?? "Unknown";
-    if (hostLCId && hostLCName !== "Unknown") {
-      if (!hostLCById[hostLCId]) hostLCById[hostLCId] = { name: hostLCName, count: 0, recent: 0, older: 0 };
-      hostLCById[hostLCId].count += 1;
-      if (bucket) hostLCById[hostLCId][bucket] += 1;
-    }
-
-    // Growth fields — entity (MC/country) level
-    const homeEntity =
-      app.person?.home_mc?.country ??
-      app.person?.home_lc?.country ??
-      app.person?.home_mc?.name ??
-      "Unknown";
-    const hostEntity =
-      app.home_mc?.country ??
-      app.opportunity?.home_mc?.country ??
-      app.home_mc?.name ??
-      app.opportunity?.home_mc?.name ??
-      "Unknown";
-
-    if (homeEntity !== "Unknown") {
-      if (!growthByHomeEntity[homeEntity]) growthByHomeEntity[homeEntity] = { recent: 0, older: 0 };
-      if (bucket) growthByHomeEntity[homeEntity][bucket] += 1;
-    }
-
-    if (hostEntity !== "Unknown") {
-      if (!growthByHostEntity[hostEntity]) growthByHostEntity[hostEntity] = { recent: 0, older: 0 };
-      if (bucket) growthByHostEntity[hostEntity][bucket] += 1;
+    if (hostLCName !== "Unknown") {
+      const hostLCKey = hostLCId ?? `name:${hostLCName}`;
+      if (!hostLCById[hostLCKey]) hostLCById[hostLCKey] = { name: hostLCName, count: 0 };
+      hostLCById[hostLCKey].count += 1;
     }
   }
 
-  // Convert id-keyed LC maps to name-keyed output (deduplicates name variants of the same entity)
-  const byHomeLC = Object.fromEntries(
-    Object.values(homeLCById).map(({ name, count }) => [name, count])
+  const byHomeCountry = Object.fromEntries(Object.values(homeMCById).map(({ name, count }) => [name, count]));
+  const byHostCountry = Object.fromEntries(Object.values(hostMCById).map(({ name, count }) => [name, count]));
+  const byHomeLC = Object.fromEntries(Object.values(homeLCById).map(({ name, count }) => [name, count]));
+  const byHostLC = Object.fromEntries(Object.values(hostLCById).map(({ name, count }) => [name, count]));
+
+  // Growth: year-on-year comparison — current period vs same period one year prior.
+  // If no priorApplications provided, growth records are empty (not displayed).
+  const prior = priorApplications ?? [];
+  const growthByHomeEntity = buildGrowthRecord(countByHomeEntity(applications), countByHomeEntity(prior));
+  const growthByHostEntity = buildGrowthRecord(countByHostEntity(applications), countByHostEntity(prior));
+  const growthByHomeLC = buildGrowthRecord(
+    countByLCId(applications, a => a.person?.home_lc?.id, a => a.person?.home_lc?.name),
+    countByLCId(prior,        a => a.person?.home_lc?.id, a => a.person?.home_lc?.name),
   );
-  const byHostLC = Object.fromEntries(
-    Object.values(hostLCById).map(({ name, count }) => [name, count])
+  const growthByHostLC = buildGrowthRecord(
+    countByLCId(applications, a => a.host_lc?.id, a => a.host_lc?.name),
+    countByLCId(prior,        a => a.host_lc?.id, a => a.host_lc?.name),
   );
-  const growthByHomeLC = Object.fromEntries(
-    Object.values(homeLCById).map(({ name, recent, older }) => [name, { recent, older }])
-  );
-  const growthByHostLC = Object.fromEntries(
-    Object.values(hostLCById).map(({ name, recent, older }) => [name, { recent, older }])
-  );
+
+  // Fill gaps so the chart line is continuous (days with no approvals = 0)
+  if (Object.keys(byDayMap).length > 1) {
+    const sorted = Object.keys(byDayMap).sort();
+    const end = new Date(sorted[sorted.length - 1]);
+    for (let d = new Date(sorted[0]); d <= end; d.setDate(d.getDate() + 1)) {
+      const k = d.toISOString().slice(0, 10);
+      if (!(k in byDayMap)) byDayMap[k] = 0;
+    }
+  }
 
   const byDay = Object.entries(byDayMap)
     .sort(([a], [b]) => a.localeCompare(b))

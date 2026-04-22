@@ -70,12 +70,11 @@ function top10Growth(rec: Record<string, { recent: number; older: number }>): {
   name: string; recent: number; older: number; rate: number;
 }[] {
   return Object.entries(rec)
-    .filter(([, v]) => v.recent > 0 || v.older > 0)
+    .filter(([, v]) => v.older > 0)
     .map(([name, v]) => ({
       name, ...v,
-      rate: ((v.recent - v.older) / Math.max(v.older, 1)) * 100,
+      rate: ((v.recent - v.older) / v.older) * 100,
     }))
-    .filter(e => e.older > 0)
     .sort((a, b) => b.rate - a.rate)
     .slice(0, 10);
 }
@@ -470,32 +469,32 @@ export default function RankingsCards(props: Props) {
   const { loading, oGV, oGTa, oGTe, iGV, iGTa, iGTe, mode, programme } = props;
   const data: ProgrammeStats = { oGV, oGTa, oGTe, iGV, iGTa, iGTe };
 
-  const [tab1, setTab1] = useState<TabKey>(() => getDefaultTab(mode, programme));
-  const [tab2, setTab2] = useState<TabKey>(() => getDefaultTab(mode, programme));
-  const [tab3, setTab3] = useState<TabKey>(() => getDefaultTab(mode, programme));
-  const [tab4, setTab4] = useState<TabKey>(() => getDefaultTab(mode, programme));
-  const [tab5, setTab5] = useState<TabKey>(() => getDefaultTab(mode, programme));
-  const [tab6, setTab6] = useState<TabKey>(() => getDefaultTab(mode, programme));
+  const [tabs, setTabs] = useState(() => {
+    const t = getDefaultTab(mode, programme);
+    return { c1: t, c2: t, c3: t, c4: t, c5: t, c6: t } as Record<string, TabKey>;
+  });
+  const mkSet = (card: string) => (k: TabKey) => setTabs(prev => ({ ...prev, [card]: k }));
 
   // Sync all card tabs when dashboard mode or programme filter changes
   useEffect(() => {
     const t = getDefaultTab(mode, programme);
-    setTab1(t); setTab2(t); setTab3(t); setTab4(t); setTab5(t); setTab6(t);
+    setTabs({ c1: t, c2: t, c3: t, c4: t, c5: t, c6: t });
   }, [mode, programme]);
 
-  const entities         = useMemo(() => top10(entityRec(tab1, data)),             [tab1, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lcs              = useMemo(() => top10(lcRec(tab2, data)),                 [tab2, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const growingEntities  = useMemo(() => top10Growth(entityGrowthRec(tab3, data)), [tab3, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const growingLCs       = useMemo(() => top10Growth(lcGrowthRec(tab4, data)),     [tab4, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const zeroHeroEntities = useMemo(() => zeroToHero(entityGrowthRec(tab5, data)),  [tab5, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const zeroHeroLCs      = useMemo(() => zeroToHero(lcGrowthRec(tab6, data)),      [tab6, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const p = { oGV, oGTa, oGTe, iGV, iGTa, iGTe };
+  const entities         = useMemo(() => top10(entityRec(tabs.c1, p)),             [tabs.c1, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lcs              = useMemo(() => top10(lcRec(tabs.c2, p)),                 [tabs.c2, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const growingEntities  = useMemo(() => top10Growth(entityGrowthRec(tabs.c3, p)), [tabs.c3, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const growingLCs       = useMemo(() => top10Growth(lcGrowthRec(tabs.c4, p)),     [tabs.c4, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zeroHeroEntities = useMemo(() => zeroToHero(entityGrowthRec(tabs.c5, p)),  [tabs.c5, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zeroHeroLCs      = useMemo(() => zeroToHero(lcGrowthRec(tabs.c6, p)),      [tabs.c6, oGV, oGTa, oGTe, iGV, iGTa, iGTe]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const accent1 = TAB_META[tab1].color;
-  const accent2 = TAB_META[tab2].color;
-  const accent3 = TAB_META[tab3].color;
-  const accent4 = TAB_META[tab4].color;
-  const accent5 = TAB_META[tab5].color;
-  const accent6 = TAB_META[tab6].color;
+  const accent1 = TAB_META[tabs.c1].color;
+  const accent2 = TAB_META[tabs.c2].color;
+  const accent3 = TAB_META[tabs.c3].color;
+  const accent4 = TAB_META[tabs.c4].color;
+  const accent5 = TAB_META[tabs.c5].color;
+  const accent6 = TAB_META[tabs.c6].color;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -506,14 +505,14 @@ export default function RankingsCards(props: Props) {
         icon={Building2}
         accent="#674ea7"
         delay={0.2}
-        tab={tab1}
-        onTabChange={setTab1}
+        tab={tabs.c1}
+        onTabChange={mkSet("c1")}
         cardId="entities"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab1}
+              key={tabs.c1}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -545,14 +544,14 @@ export default function RankingsCards(props: Props) {
         icon={MapPin}
         accent="#0CB9C1"
         delay={0.3}
-        tab={tab2}
-        onTabChange={setTab2}
+        tab={tabs.c2}
+        onTabChange={mkSet("c2")}
         cardId="lcs"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab2}
+              key={tabs.c2}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -584,14 +583,14 @@ export default function RankingsCards(props: Props) {
         icon={TrendingUp}
         accent="#F48924"
         delay={0.4}
-        tab={tab3}
-        onTabChange={setTab3}
+        tab={tabs.c3}
+        onTabChange={mkSet("c3")}
         cardId="growing-entities"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab3}
+              key={tabs.c3}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -628,14 +627,14 @@ export default function RankingsCards(props: Props) {
         icon={TrendingUp}
         accent="#F85A40"
         delay={0.5}
-        tab={tab4}
-        onTabChange={setTab4}
+        tab={tabs.c4}
+        onTabChange={mkSet("c4")}
         cardId="growing-lcs"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab4}
+              key={tabs.c4}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -673,14 +672,14 @@ export default function RankingsCards(props: Props) {
         icon={Star}
         accent="#10b981"
         delay={0.6}
-        tab={tab5}
-        onTabChange={setTab5}
+        tab={tabs.c5}
+        onTabChange={mkSet("c5")}
         cardId="zero-hero-entities"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab5}
+              key={tabs.c5}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -713,14 +712,14 @@ export default function RankingsCards(props: Props) {
         icon={Star}
         accent="#a78bfa"
         delay={0.7}
-        tab={tab6}
-        onTabChange={setTab6}
+        tab={tabs.c6}
+        onTabChange={mkSet("c6")}
         cardId="zero-hero-lcs"
       >
         {loading ? <Skeleton /> : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab6}
+              key={tabs.c6}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}

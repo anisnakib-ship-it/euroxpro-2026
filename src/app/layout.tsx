@@ -11,7 +11,7 @@ const firaCode = Fira_Code({
 
 export const metadata: Metadata = {
   title: "AIESEC in Europe · Approvals Tracker",
-  description: "Real-time approval tracking dashboard for AIESEC in Europe — Hackathon 2026",
+  description: "Real-time approval tracking dashboard for AIESEC in Europe — EuroXpro Games 2026",
 };
 
 export default function RootLayout({

@@ -129,8 +129,15 @@ export default function RegionalCollaboration({ oGXByHostCountry, iCXByHomeCount
           ? REGION_ORDER.map(r => <CardSkeleton key={r} />)
           : REGION_ORDER.map((region, i) => {
               const meta = REGION_META[region];
-              const oGX = oGXByRegion[region];
-              const iCX = iCXByRegion[region];
+              const isIntraEUR = region === "EUR";
+              // For EUR↔EUR, oGX and iCX are the same exchanges from two perspectives.
+              // Use the higher count for both (some iCX apps have null person.home_mc).
+              const oGX = isIntraEUR
+                ? Math.max(oGXByRegion[region], iCXByRegion[region])
+                : oGXByRegion[region];
+              const iCX = isIntraEUR
+                ? Math.max(oGXByRegion[region], iCXByRegion[region])
+                : iCXByRegion[region];
               const total = oGX + iCX;
               const balance = oGX - iCX;
 
@@ -183,7 +190,7 @@ export default function RegionalCollaboration({ oGXByHostCountry, iCXByHomeCount
                       <h3 className="text-white font-bold text-sm leading-tight">{meta.label}</h3>
                     </div>
 
-                    {/* Total bilateral count */}
+                    {/* Total count */}
                     <div className="text-right">
                       <motion.div
                         className="text-xl font-black tabular-nums leading-none"
@@ -195,7 +202,7 @@ export default function RegionalCollaboration({ oGXByHostCountry, iCXByHomeCount
                         {total.toLocaleString()}
                       </motion.div>
                       <div className="text-[9px] mt-0.5 font-data" style={{ color: "rgba(255,255,255,0.2)" }}>
-                        bilateral
+bilateral
                       </div>
                     </div>
                   </div>
@@ -205,7 +212,7 @@ export default function RegionalCollaboration({ oGXByHostCountry, iCXByHomeCount
                     <FlowRow
                       label="oGX"
                       from="EUR"
-                      to={meta.shortLabel}
+                      to={isIntraEUR ? "EUR" : meta.shortLabel}
                       count={oGX}
                       max={maxAll}
                       color={meta.color}
@@ -215,7 +222,7 @@ export default function RegionalCollaboration({ oGXByHostCountry, iCXByHomeCount
                     />
                     <FlowRow
                       label="iCX"
-                      from={meta.shortLabel}
+                      from={isIntraEUR ? "EUR" : meta.shortLabel}
                       to="EUR"
                       count={iCX}
                       max={maxAll}

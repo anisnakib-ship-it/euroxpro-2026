@@ -25,17 +25,17 @@ const QUERY = `
         person {
           id
           full_name
-          home_lc { id name country tag }
-          home_mc { id name country tag }
+          home_lc { id name tag }
+          home_mc { id name tag }
         }
-        host_lc { id name country tag }
-        home_mc  { id name country tag }
+        host_lc { id name tag }
+        home_mc  { id name tag }
         opportunity {
           id
           title
           programme { id short_name short_name_display }
-          home_lc   { id name country tag }
-          home_mc   { id name country tag }
+          home_lc   { id name tag }
+          home_mc   { id name tag }
         }
       }
       paging { total_items total_pages current_page }

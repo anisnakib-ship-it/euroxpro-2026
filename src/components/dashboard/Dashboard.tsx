@@ -276,7 +276,7 @@ export default function Dashboard({ onHackathon }: { onHackathon?: () => void } 
                   animate={{ opacity: [0.4, 1, 0.4] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
-                Approvals Tracker · Hackathon March 25–29, 2026
+                Approvals Tracker · EuroXpro Games 2026 · March 25–29
                 <motion.span
                   className="w-1.5 h-1.5 rounded-full inline-block"
                   style={{ backgroundColor: "#037EF3" }}
